@@ -14,6 +14,40 @@ module led_mmio (
     end
 endmodule
 
+module message_display_mmio #(
+    parameter MSG_BYTES = 16
+) (
+    input  wire         clk,
+    input  wire         rst,
+    input  wire         we,
+    input  wire [3:0]   wstrb,
+    input  wire [3:0]   addr_word,
+    input  wire [31:0]  wdata,
+    output wire [127:0] msg_ascii
+);
+    reg [7:0] message [0:MSG_BYTES-1];
+    integer j;
+
+    always @(posedge clk or posedge rst) begin
+        if (rst) begin
+            for (j = 0; j < MSG_BYTES; j = j + 1)
+                message[j] <= 8'h20; // space
+        end else if (we) begin
+            if (wstrb[0]) message[{addr_word, 2'b00}] <= wdata[7:0];
+            if (wstrb[1]) message[{addr_word, 2'b01}] <= wdata[15:8];
+            if (wstrb[2]) message[{addr_word, 2'b10}] <= wdata[23:16];
+            if (wstrb[3]) message[{addr_word, 2'b11}] <= wdata[31:24];
+        end
+    end
+
+    genvar k;
+    generate
+        for (k = 0; k < MSG_BYTES; k = k + 1) begin : g_msg_out
+            assign msg_ascii[(8*k)+:8] = message[k];
+        end
+    endgenerate
+endmodule
+
 module vga_controller (
     input  wire        clk_25mhz,
     input  wire        rst,
