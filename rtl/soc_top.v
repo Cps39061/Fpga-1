@@ -3,6 +3,7 @@ module soc_top (
     input  wire        clk_vga,
     input  wire        rst,
     output wire [7:0]  led,
+    output wire [127:0] msg_ascii,
     output wire        vga_hsync,
     output wire        vga_vsync,
     output wire [3:0]  vga_r,
@@ -11,6 +12,7 @@ module soc_top (
 );
     localparam LED_ADDR  = 32'h4000_0000;
     localparam VGA_ADDR  = 32'h5000_0000;
+    localparam MSG_ADDR  = 32'h6000_0000;
 
     wire [31:0] imem_addr;
     wire [31:0] imem_rdata;
@@ -31,6 +33,7 @@ module soc_top (
 
     wire led_sel = (dmem_addr == LED_ADDR);
     wire vga_sel = (dmem_addr[31:20] == VGA_ADDR[31:20]);
+    wire msg_sel = (dmem_addr[31:20] == MSG_ADDR[31:20]);
 
     integer idx;
     initial begin
@@ -42,15 +45,22 @@ module soc_top (
             vram[idx] = 8'h00;
         end
 
-        // Demo software: increment LED and write color stripes to VRAM.
-        imem[0]  = 32'h00000093; // addi x1, x0, 0
-        imem[1]  = 32'h00108093; // addi x1, x1, 1
-        imem[2]  = 32'h40100137; // lui  x2, 0x40100 -> 0x4010_0000 (near LED map)
-        imem[3]  = 32'h00112023; // sw   x1, 0(x2)
-        imem[4]  = 32'h500001b7; // lui  x3, 0x50000 (VRAM base)
-        imem[5]  = 32'h0ff00213; // addi x4, x0, 255
-        imem[6]  = 32'h0041a023; // sw   x4, 0(x3)
-        imem[7]  = 32'hff9ff06f; // jal  x0, -8
+        // Demo software:
+        // 1) Calculator: 7 + 5 -> LED.
+        // 2) Message display: "CALC OK" into message MMIO.
+        imem[0]  = 32'h00700093; // addi x1, x0, 7
+        imem[1]  = 32'h00500113; // addi x2, x0, 5
+        imem[2]  = 32'h002081b3; // add  x3, x1, x2
+        imem[3]  = 32'h40000237; // lui  x4, 0x40000 (LED base)
+        imem[4]  = 32'h00322023; // sw   x3, 0(x4)
+        imem[5]  = 32'h600002b7; // lui  x5, 0x60000 (message base)
+        imem[6]  = 32'h434c4337; // lui  x6, 0x434c4
+        imem[7]  = 32'h14330313; // addi x6, x6, 0x143 => "CALC"
+        imem[8]  = 32'h0062a023; // sw   x6, 0(x5)
+        imem[9]  = 32'h204b53b7; // lui  x7, 0x204b5
+        imem[10] = 32'hf2038393; // addi x7, x7, -224 => " OK "
+        imem[11] = 32'h0072a223; // sw   x7, 4(x5)
+        imem[12] = 32'h0000006f; // jal  x0, 0
     end
 
     assign imem_rdata = imem[imem_addr[11:2]];
@@ -60,6 +70,8 @@ module soc_top (
             dmem_rdata = {24'h0, led};
         else if (vga_sel)
             dmem_rdata = {24'h0, vram[dmem_addr[13:2]]};
+        else if (msg_sel)
+            dmem_rdata = 32'h0;
         else
             dmem_rdata = dmem[dmem_addr[11:2]];
     end
@@ -68,7 +80,7 @@ module soc_top (
         if (dmem_we) begin
             if (vga_sel)
                 vram[dmem_addr[13:2]] <= dmem_wdata[7:0];
-            else if (!led_sel)
+            else if (!led_sel && !msg_sel)
                 dmem[dmem_addr[11:2]] <= dmem_wdata;
         end
     end
@@ -80,6 +92,16 @@ module soc_top (
         .wstrb(dmem_wstrb),
         .wdata(dmem_wdata),
         .leds(led)
+    );
+
+    message_display_mmio u_msg (
+        .clk(clk_cpu),
+        .rst(rst),
+        .we(dmem_we && msg_sel),
+        .wstrb(dmem_wstrb),
+        .addr_word(dmem_addr[5:2]),
+        .wdata(dmem_wdata),
+        .msg_ascii(msg_ascii)
     );
 
     assign vga_pixel = vram[{vga_y[8:4], vga_x[8:4]}];
