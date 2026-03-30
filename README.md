@@ -1,39 +1,83 @@
-# 5-Stage RISC-V Processor with LED + VGA Peripherals
+# Simple 5-Stage RISC-V Processor (Xilinx ISE Friendly)
 
-This repo now contains a compact **5-stage (IF/ID/EX/MEM/WB) RV32I-style processor** and a small SoC wrapper that connects memory-mapped peripherals:
+This repository contains a compact **5-stage RV32I-style processor** and a small SoC wrapper that drives:
 
-- **LED register** (8-bit output)
-- **VGA controller** (640x480@60Hz timing, simple tile-based framebuffer)
+- **LED output** through memory-mapped I/O
+- **VGA output** (640x480 @ 60 Hz timing)
 
-## Files
+The RTL is plain Verilog and can be used in **Xilinx ISE Design Suite** projects.
 
-- `rtl/riscv5_core.v` - 5-stage pipelined CPU core (basic RV32I subset)
-- `rtl/peripherals.v` - LED MMIO and VGA timing/pixel generator blocks
-- `rtl/soc_top.v` - top-level SoC integrating CPU, RAM/ROM, LED, and VGA VRAM
+## Project Files
+
+- `rtl/riscv5_core.v` - 5-stage pipelined RISC-V core (educational subset)
+- `rtl/peripherals.v` - LED MMIO block + VGA timing/controller
+- `rtl/soc_top.v` - top-level SoC (CPU + memories + LED + VGA)
+- `rtl/tb_soc_top.v` - simulation testbench that prints LED output changes
 
 ## Memory Map
 
-- `0x4000_0000` : LED output register (`[7:0]` drives LEDs)
-- `0x5000_0000` - `0x5000_3FFF` : VGA VRAM region (8-bit color entries)
+- `0x4000_0000` : LED register (`[7:0]` -> board LEDs)
+- `0x5000_0000` - `0x5000_3FFF` : VGA VRAM (8-bit pixel entries)
 
-## Notes
+## What the Demo Program Does
 
-- Core pipeline is educational and intentionally compact.
-- The top module includes a tiny demo program preloaded into instruction memory:
-  - increments a register
-  - writes it to LED MMIO
-  - writes a color value to VGA memory
-- VGA output uses a coarse tile lookup from VRAM:
-  - address index = `{y[8:4], x[8:4]}`
+The built-in ROM program in `soc_top.v`:
+1. increments a register,
+2. writes it to LED MMIO (`0x4000_0000`),
+3. writes a color byte into VGA VRAM,
+4. loops forever.
 
-## Simulate (example with Icarus Verilog)
+So in hardware/simulation you should see LED activity and a non-black VGA tile value.
+
+---
+
+## Quick Simulation (Icarus Verilog)
 
 ```bash
-iverilog -g2012 -o simv rtl/riscv5_core.v rtl/peripherals.v rtl/soc_top.v
+iverilog -g2012 -o simv rtl/riscv5_core.v rtl/peripherals.v rtl/soc_top.v rtl/tb_soc_top.v
 vvp simv
 ```
 
-You can adapt this for your FPGA board by:
-1. replacing/demo-loading instruction memory from a HEX file,
-2. connecting board-specific clocks/resets/pins in constraints,
-3. optionally adding a PLL for 25 MHz VGA clock.
+Expected console behavior: repeated `LED=xx` prints and final `PASS` message.
+
+---
+
+## Using This Design in Xilinx ISE Design Suite
+
+### 1) Create Project
+
+1. Open **ISE Project Navigator**.
+2. Create a new project (select your FPGA device/package/speed).
+3. Add these RTL sources:
+   - `rtl/riscv5_core.v`
+   - `rtl/peripherals.v`
+   - `rtl/soc_top.v`
+
+### 2) Set Top Module
+
+- Set `soc_top` as the **Top Module**.
+
+### 3) Add UCF Constraints
+
+Create a `.ucf` file for your board pins, for example:
+- `clk_cpu`
+- `clk_vga` (or derive 25 MHz clock with DCM/PLL)
+- `rst`
+- `led[7:0]`
+- `vga_hsync`, `vga_vsync`, `vga_r[3:0]`, `vga_g[3:0]`, `vga_b[3:0]`
+
+### 4) Run ISE Flow
+
+- Synthesize → Implement Design → Generate Programming File (`.bit`).
+
+### 5) Program FPGA
+
+Use iMPACT / board programmer to load the bitstream.
+
+---
+
+## Notes
+
+- This is an educational baseline (minimal hazard handling).
+- For production use, add forwarding/stall logic and proper memory initialization from external HEX/COE files.
+- If your board has only one oscillator, generate a 25 MHz pixel clock for VGA.
