@@ -45,7 +45,7 @@ module soc_top (
         // Demo software: increment LED and write color stripes to VRAM.
         imem[0]  = 32'h00000093; // addi x1, x0, 0
         imem[1]  = 32'h00108093; // addi x1, x1, 1
-        imem[2]  = 32'h40100137; // lui  x2, 0x40100 -> 0x4010_0000 (near LED map)
+        imem[2]  = 32'h40000137; // lui  x2, 0x40000 -> 0x4000_0000 (LED MMIO base)
         imem[3]  = 32'h00112023; // sw   x1, 0(x2)
         imem[4]  = 32'h500001b7; // lui  x3, 0x50000 (VRAM base)
         imem[5]  = 32'h0ff00213; // addi x4, x0, 255
